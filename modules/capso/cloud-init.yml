@@ -1,0 +1,139 @@
+#cloud-config
+package_update: true
+package_upgrade: true
+
+packages:
+  - apt-transport-https
+  - ca-certificates
+  - curl
+  - gnupg
+  - lsb-release
+  - docker.io
+  - docker-compose
+
+groups:
+  - docker
+
+users:
+  - default
+  - name: capuser
+    groups: docker
+    shell: /bin/bash
+    sudo: ALL=(ALL) NOPASSWD:ALL
+
+runcmd:
+  # Start and enable Docker
+  - systemctl start docker
+  - systemctl enable docker
+  
+  # Create cap directory
+  - mkdir -p /opt/cap
+  - cd /opt/cap
+  
+  # Create docker-compose.yml file (Cap only, MinIO is external)
+  - |
+    cat > /opt/cap/docker-compose.yml << 'EOF'
+    name: cap-so-docker-production
+    
+    services:
+      cap-web:
+        container_name: cap-web
+        image: ghcr.io/capsoftware/cap-web:latest
+        restart: unless-stopped
+        environment:
+          DATABASE_URL: 'mysql://root:${mysql_root_password}@ps-mysql:3306/planetscale?ssl={"rejectUnauthorized":false}'
+          WEB_URL: ${web_url}
+          NEXTAUTH_URL: ${web_url}
+          DATABASE_ENCRYPTION_KEY: ${database_encryption_key}
+          NEXTAUTH_SECRET: ${nextauth_secret}
+          CAP_AWS_ACCESS_KEY: ${cap_aws_access_key}
+          CAP_AWS_SECRET_KEY: ${cap_aws_secret_key}
+          CAP_AWS_BUCKET: capso
+          CAP_AWS_REGION: us-east-1
+          S3_PUBLIC_ENDPOINT: ${s3_public_endpoint}
+          S3_INTERNAL_ENDPOINT: ${s3_internal_endpoint}
+        ports:
+          - 3000:3000
+        depends_on:
+          - ps-mysql
+    
+      ps-mysql:
+        container_name: cap-primary-db
+        image: mysql:8.0
+        restart: unless-stopped
+        environment:
+          MYSQL_DATABASE: planetscale
+          MYSQL_ROOT_HOST: "%"
+          MYSQL_ROOT_PASSWORD: ${mysql_root_password}
+        command:
+          [
+            "--max_connections=1000",
+            "--default-authentication-plugin=mysql_native_password",
+          ]
+        ports:
+          - "3306:3306"
+        volumes:
+          - ps-mysql:/var/lib/mysql
+    
+    volumes:
+      ps-mysql:
+    EOF
+  
+  # Create systemd service for Cap
+  - |
+    cat > /etc/systemd/system/cap.service << 'EOF'
+    [Unit]
+    Description=Cap Application
+    Requires=docker.service
+    After=docker.service
+    
+    [Service]
+    Type=oneshot
+    RemainAfterExit=yes
+    WorkingDirectory=/opt/cap
+    ExecStart=/usr/bin/docker-compose up -d
+    ExecStop=/usr/bin/docker-compose down
+    TimeoutStartSec=0
+    
+    [Install]
+    WantedBy=multi-user.target
+    EOF
+  
+  # Set permissions
+  - chown -R capuser:capuser /opt/cap
+  - chmod +x /opt/cap/docker-compose.yml
+  
+  # Enable and start the Cap service
+  - systemctl daemon-reload
+  - systemctl enable cap.service
+  - systemctl start cap.service
+
+write_files:
+  - path: /opt/cap/check-services.sh
+    permissions: '0755'
+    owner: capuser:capuser
+    content: |
+      #!/bin/bash
+      echo "Checking Cap services status..."
+      docker-compose -f /opt/cap/docker-compose.yml ps
+      echo ""
+      echo "Cap Web: http://$(curl -s ifconfig.me):3000"
+      echo "External MinIO API: ${s3_public_endpoint}"
+      echo ""
+      echo "Testing MinIO connection..."
+      curl -s ${s3_internal_endpoint}/minio/health/live && echo "MinIO connection OK" || echo "MinIO connection failed"
+
+final_message: |
+  Cap deployment completed!
+  
+  Cap is now running and connected to external MinIO storage.
+  
+  Services:
+  - Cap Web: http://YOUR_LOAD_BALANCER_IP
+  - MySQL: Internal only
+  - MinIO: External service
+  
+  Run 'sudo /opt/cap/check-services.sh' to verify service status.
+  
+  Cap will use the external MinIO service for file storage.
+  Make sure MinIO service is running and accessible. 

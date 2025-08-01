@@ -1,0 +1,219 @@
+#cloud-config
+package_update: true
+package_upgrade: true
+
+packages:
+  - apt-transport-https
+  - ca-certificates
+  - curl
+  - gnupg
+  - lsb-release
+  - docker.io
+  - docker-compose
+
+groups:
+  - docker
+
+users:
+  - default
+  - name: miniouser
+    groups: docker
+    shell: /bin/bash
+    sudo: ALL=(ALL) NOPASSWD:ALL
+
+runcmd:
+  # Start and enable Docker
+  - systemctl start docker
+  - systemctl enable docker
+  
+  # Format and mount the persistent data disk
+  - |
+    # Wait for disk to be available
+    while [ ! -b ${minio_data_disk_device} ]; do
+      echo "Waiting for data disk ${minio_data_disk_device}..."
+      sleep 5
+    done
+  
+  # Check if disk is already formatted
+  - |
+    if ! blkid ${minio_data_disk_device}; then
+      echo "Formatting data disk ${minio_data_disk_device}..."
+      mkfs.ext4 ${minio_data_disk_device}
+    else
+      echo "Data disk ${minio_data_disk_device} already formatted"
+    fi
+  
+  # Create mount point and mount
+  - mkdir -p /mnt/minio-data
+  - |
+    # Add to fstab for persistent mounting
+    DISK_UUID=$(blkid -s UUID -o value ${minio_data_disk_device})
+    if ! grep -q "$DISK_UUID" /etc/fstab; then
+      echo "UUID=$DISK_UUID /mnt/minio-data ext4 defaults,nofail 0 2" >> /etc/fstab
+    fi
+  - mount -a
+  
+  # Set permissions for MinIO data directory
+  - chown -R 1000:1000 /mnt/minio-data
+  - chmod 755 /mnt/minio-data
+  
+  # Create MinIO directory structure
+  - mkdir -p /opt/minio
+  - cd /opt/minio
+  
+  # Create docker-compose.yml file for MinIO
+  - |
+    cat > /opt/minio/docker-compose.yml << 'EOF'
+    version: '3.8'
+    
+    services:
+      minio:
+        container_name: minio-server
+        image: "bitnami/minio:latest"
+        restart: unless-stopped
+        ports:
+          - "9000:9000"   # MinIO API
+          - "9001:9001"   # MinIO Console
+        environment:
+          - MINIO_API_PORT_NUMBER=9000
+          - MINIO_CONSOLE_PORT_NUMBER=9001
+          - MINIO_ROOT_USER=${minio_root_user}
+          - MINIO_ROOT_PASSWORD=${minio_root_password}
+          - MINIO_DEFAULT_BUCKETS=capso,nextcloud,backup
+          - MINIO_SERVER_URL=https://${minio_api_domain}
+          - MINIO_BROWSER_REDIRECT_URL=https://${minio_console_domain}
+        volumes:
+          - /mnt/minio-data:/bitnami/minio/data
+        command: minio server /bitnami/minio/data --console-address ":9001"
+        healthcheck:
+          test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+          interval: 30s
+          timeout: 20s
+          retries: 3
+    EOF
+  
+  # Create systemd service for MinIO
+  - |
+    cat > /etc/systemd/system/minio.service << 'EOF'
+    [Unit]
+    Description=MinIO Object Storage
+    Requires=docker.service
+    After=docker.service
+    
+    [Service]
+    Type=oneshot
+    RemainAfterExit=yes
+    WorkingDirectory=/opt/minio
+    ExecStart=/usr/bin/docker-compose up -d
+    ExecStop=/usr/bin/docker-compose down
+    TimeoutStartSec=0
+    
+    [Install]
+    WantedBy=multi-user.target
+    EOF
+  
+  # Set permissions
+  - chown -R miniouser:miniouser /opt/minio
+  - chmod +x /opt/minio/docker-compose.yml
+  
+  # Enable and start the MinIO service
+  - systemctl daemon-reload
+  - systemctl enable minio.service
+  - systemctl start minio.service
+  
+  # Wait for MinIO to start and create additional buckets if needed
+  - sleep 30
+  - |
+    docker exec minio-server mc alias set local http://localhost:9000 ${minio_root_user} ${minio_root_password}
+  - |
+    # Create additional buckets for different services
+    docker exec minio-server mc mb local/capso --ignore-existing
+    docker exec minio-server mc mb local/nextcloud --ignore-existing
+    docker exec minio-server mc mb local/backup --ignore-existing
+  - |
+    # Set public read policy for capso bucket (for Cap screenshots)
+    docker exec minio-server mc anonymous set public local/capso
+  
+  # Create backup script for MinIO data
+  - |
+    cat > /opt/minio/backup-script.sh << 'EOF'
+    #!/bin/bash
+    BACKUP_DIR="/mnt/minio-data/backups"
+    DATE=$(date +%Y%m%d_%H%M%S)
+    
+    mkdir -p $BACKUP_DIR
+    
+    # Create backup of MinIO configuration and data structure
+    docker exec minio-server mc admin info local > $BACKUP_DIR/minio_info_$DATE.txt
+    docker exec minio-server mc ls -r local > $BACKUP_DIR/minio_objects_$DATE.txt
+    
+    echo "Backup completed: $DATE"
+    EOF
+  - chmod +x /opt/minio/backup-script.sh
+
+write_files:
+  - path: /opt/minio/check-minio.sh
+    permissions: '0755'
+    owner: miniouser:miniouser
+    content: |
+      #!/bin/bash
+      echo "MinIO Status Check"
+      echo "=================="
+      echo "Docker Status:"
+      docker-compose -f /opt/minio/docker-compose.yml ps
+      echo ""
+      echo "MinIO Health:"
+      curl -s http://localhost:9000/minio/health/live || echo "MinIO API not responding"
+      echo ""
+      echo "Disk Usage:"
+      df -h /mnt/minio-data
+      echo ""
+      echo "Data Directory:"
+      ls -la /mnt/minio-data/
+      echo ""
+      echo "MinIO API: https://${minio_api_domain}"
+      echo "MinIO Console: https://${minio_console_domain}"
+      echo "Local MinIO API: http://$(curl -s ifconfig.me):9000"
+      echo "Local MinIO Console: http://$(curl -s ifconfig.me):9001"
+
+  - path: /opt/minio/disk-info.sh
+    permissions: '0755'
+    owner: miniouser:miniouser
+    content: |
+      #!/bin/bash
+      echo "Persistent Disk Information"
+      echo "=========================="
+      echo "Mounted disks:"
+      df -h | grep -E "(minio|sdc)"
+      echo ""
+      echo "Disk UUID in fstab:"
+      grep minio /etc/fstab
+      echo ""
+      echo "Block devices:"
+      lsblk | grep -E "(sdc|minio)"
+
+final_message: |
+  MinIO deployment completed!
+  
+  MinIO is now running on a persistent disk that will retain data across reboots.
+  
+  Services available at:
+  - MinIO API: https://${minio_api_domain}
+  - MinIO Console: https://${minio_console_domain}
+  
+  Default buckets created: capso, nextcloud, backup
+  
+  Run these commands to check status:
+  - 'sudo /opt/minio/check-minio.sh' - Check MinIO status
+  - 'sudo /opt/minio/disk-info.sh' - Check persistent disk info
+  - 'sudo /opt/minio/backup-script.sh' - Create backup
+  
+  Credentials:
+  - User: ${minio_root_user}
+  - Password: ${minio_root_password}
+  
+  Data is stored on persistent disk at: /mnt/minio-data
+  
+  Domain Configuration:
+  - API Domain: ${minio_api_domain}
+  - Console Domain: ${minio_console_domain} 

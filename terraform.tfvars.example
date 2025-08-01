@@ -1,0 +1,81 @@
+# Copy this file to terraform.tfvars and customize the values below
+
+# Basic Configuration
+resource_group_name = "selfhost-production-rg"
+location           = "East US"  # Change to your preferred Azure region
+
+# Domain Configuration - UPDATE THESE TO YOUR DOMAINS
+cap_domain           = "capso.2vid.ai"
+minio_api_domain     = "api.minio.2vid.ai"
+minio_console_domain = "console.minio.2vid.ai"
+
+# Network Configuration
+vnet_address_space               = ["10.0.0.0/16"]
+subnet_address_prefixes          = ["10.0.1.0/24"]     # Main subnet for VMs
+appgw_subnet_address_prefixes    = ["10.0.2.0/24"]     # Application Gateway subnet
+
+# VM Configuration
+vm_size         = "Standard_D2s_v3"      # Cap VM size
+minio_vm_size   = "Standard_D2s_v3"      # MinIO VM size (consider larger for storage workloads)
+admin_username  = "selfhostuser"
+
+# SSH Configuration
+# Make sure you have an SSH key pair generated
+# ssh-keygen -t rsa -b 4096 -C "your_email@example.com"
+ssh_public_key_path = "~/.ssh/id_rsa.pub"
+
+# MinIO Storage Configuration
+minio_root_user        = "minio-admin-2024"
+minio_root_password    = "MinIO-Secure-Password-2024!"
+minio_disk_size_gb     = 100  # Size of persistent data disk in GB (adjust based on needs)
+
+# Cap Application Configuration - CHANGE THESE VALUES FOR PRODUCTION!
+# Generate secure random values for production deployment
+database_encryption_key = "your-secure-64-char-hex-string-here"  # Generate with: openssl rand -hex 32
+nextauth_secret        = "your-secure-64-char-hex-string-here"  # Generate with: openssl rand -hex 32
+
+# S3/MinIO Configuration for Cap (should match MinIO credentials)
+cap_aws_access_key     = "minio-admin-2024"                    # Same as minio_root_user
+cap_aws_secret_key     = "MinIO-Secure-Password-2024!"         # Same as minio_root_password
+
+# Database Configuration
+mysql_root_password    = "CapMySQL-Secure-Password-2024!"
+
+# Production Examples (replace with your own secure values):
+# database_encryption_key = "a1b2c3d4e5f6789012345678901234567890abcdef1234567890abcdef123456"
+# nextauth_secret        = "b2c3d4e5f6789012345678901234567890abcdef1234567890abcdef123456a1"
+# minio_root_user        = "selfhost-minio-admin"
+# minio_root_password    = "YourSecureMinIOPassword2024!"
+# cap_aws_access_key     = "selfhost-minio-admin"
+# cap_aws_secret_key     = "YourSecureMinIOPassword2024!"
+# mysql_root_password    = "YourSecureMySQLPassword2024!"
+
+# MinIO Disk Sizing Guidelines:
+# - 50GB: Basic testing and small workloads
+# - 100GB: Small to medium production workloads  
+# - 250GB: Medium production workloads
+# - 500GB+: Large production workloads with lots of media files
+#
+# Note: You can resize the disk later via Azure portal if needed
+
+# Architecture Notes:
+# This configuration uses Azure Application Gateway (Layer 7) for intelligent routing:
+# - capso.2vid.ai → Cap VM:3000
+# - api.minio.2vid.ai → MinIO VM:9000 (S3 API)
+# - console.minio.2vid.ai → MinIO VM:9001 (Web Console)
+#
+# Benefits:
+# - Domain-based routing (no port numbers in URLs)
+# - SSL termination at the gateway
+# - WAF capabilities
+# - Auto-scaling support
+# - Health checks and failover
+
+# DNS Configuration Instructions:
+# After deployment, you'll need to configure DNS records:
+# 1. Get the Application Gateway IP from Terraform outputs
+# 2. Create A records in your DNS provider:
+#    - capso.2vid.ai → APPLICATION_GATEWAY_IP
+#    - api.minio.2vid.ai → APPLICATION_GATEWAY_IP  
+#    - console.minio.2vid.ai → APPLICATION_GATEWAY_IP
+# 3. Configure SSL certificates (Azure-managed certs or Let's Encrypt) 
