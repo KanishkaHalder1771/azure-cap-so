@@ -12,7 +12,7 @@ This repository provides a production-ready, modular Terraform configuration for
 │                    (Layer 7 Load Balancer)                     │
 │                                                                 │
 │  ┌─────────────────┐ ┌─────────────────┐ ┌─────────────────┐   │
-│  │ capso.2vid.ai   │ │api.minio.2vid.ai│ │console.minio... │   │
+│  │ capso.example.com   │ │api.minio.example.com│ │console.minio... │   │
 │  │      :80        │ │      :80        │ │      :80        │   │
 │  └─────────────────┘ ┌─────────────────┘ └─────────────────┘   │
 └─────────────────────────────────────────────────────────────────┘
@@ -29,7 +29,7 @@ This repository provides a production-ready, modular Terraform configuration for
     └─────────────┘        │ ┌─────────┐ │
                            │ │Persistent│ │
                            │ │  Disk   │ │
-                           │ │ 100GB+  │ │
+                           │ │  50GB+  │ │
                            │ └─────────┘ │
                            └─────────────┘
 ```
@@ -215,8 +215,8 @@ sudo ./backup-script.sh
 ## 🔐 Default Credentials
 
 ### MinIO
-- **Username**: `minio-admin`
-- **Password**: `minio-secure-password-123`
+- **Username**: Set via `minio_root_user` variable
+- **Password**: Set via `minio_root_password` variable
 - **Access via**: https://console.minio.yourdomain.com
 
 ### MySQL (Cap Database)
@@ -354,29 +354,6 @@ terraform apply -target=module.capso
 For detailed instructions on configuring DNS records and SSL certificates, see our comprehensive guide:
 
 - [DNS and SSL Setup Guide](dns_ssl_setup_guide.md)
-
-## 🎯 Architecture Benefits
-
-### Application Gateway Advantages
-- **Layer 7 Routing**: Intelligent routing based on domain names and paths
-- **SSL Termination**: Centralized certificate management
-- **WAF Support**: Web Application Firewall capabilities
-- **Health Probes**: Automatic backend health monitoring
-- **Auto-scaling**: Built-in scaling capabilities
-
-### Modular Benefits
-- **Reusability**: Easy to deploy multiple environments
-- **Maintainability**: Clear separation of concerns
-- **Scalability**: Add new services without touching existing infrastructure
-- **Testing**: Test individual modules in isolation
-
-### Storage Benefits
-- **Persistence**: Data survives infrastructure changes
-- **Performance**: Premium SSD storage for optimal performance
-- **Scalability**: Easy to expand storage capacity
-- **Backup**: Built-in backup capabilities
-
----
 
 ## 📞 Support
 

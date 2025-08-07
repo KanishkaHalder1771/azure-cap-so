@@ -3,7 +3,18 @@ resource "azurerm_public_ip" "capso_vm" {
   name                = "capso-vm-public-ip"
   location            = var.location
   resource_group_name = var.resource_group_name
-  allocation_method   = "Dynamic"
+  allocation_method   = "Static"
+  sku                 = "Standard"
+}
+
+# Persistent Data Disk for MySQL
+resource "azurerm_managed_disk" "capso_data" {
+  name                 = "capso-data-disk"
+  location             = var.location
+  resource_group_name  = var.resource_group_name
+  storage_account_type = "Premium_LRS"
+  create_option        = "Empty"
+  disk_size_gb         = var.cap_disk_size_gb
 }
 
 # Network Interface
@@ -67,5 +78,16 @@ resource "azurerm_linux_virtual_machine" "capso" {
     web_url               = "https://${var.cap_domain}"
     s3_public_endpoint    = "https://${var.minio_api_domain}"
     s3_internal_endpoint  = var.minio_internal_endpoint
+    cap_data_disk_device  = "/dev/sdc"
+    resend_api_key        = var.resend_api_key
+    resend_from_domain    = var.resend_from_domain
   }))
+}
+
+# Attach Data Disk to VM
+resource "azurerm_virtual_machine_data_disk_attachment" "capso_data" {
+  managed_disk_id    = azurerm_managed_disk.capso_data.id
+  virtual_machine_id = azurerm_linux_virtual_machine.capso.id
+  lun                = "0"
+  caching            = "ReadWrite"
 } 

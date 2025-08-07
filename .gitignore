@@ -1,0 +1,112 @@
+# Terraform files
+*.tfstate
+*.tfstate.*
+*.tfstate.backup
+*.tfplan
+*.tfplan.*
+.terraform/
+.terraform.lock.hcl
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.terraformrc
+terraform.rc
+
+# Variable files (may contain sensitive data)
+terraform.tfvars
+*.tfvars
+!*.tfvars.example
+*.auto.tfvars
+*.auto.tfvars.json
+
+# Azure specific files
+.azure/
+*.publishsettings
+*.azurePubxml
+
+# Key and certificate files
+*.key
+*.pem
+*.crt
+*.cer
+*.pfx
+*.p12
+.key/
+keys/
+certs/
+certificates/
+
+# Environment files
+.env
+.env.local
+.env.production
+.env.staging
+.env.development
+*.env
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+crash.log
+crash.*.log
+
+# Backup files
+*.bak
+*.backup
+*.orig
+
+# Temporary files
+*.tmp
+*.temp
+.tmp/
+.temp/
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# SSH keys
+id_rsa
+id_rsa.pub
+*.ppk
+
+# Azure CLI
+.azure/
+
+# Helm
+.helm/
+*.tgz
+
+# Kubernetes
+kubeconfig
+*.kubeconfig
+
+# Scripts that might contain secrets
+*secret*
+*password*
+*credential*
+
+# Documentation build artifacts
+_site/
+.sass-cache/
+.jekyll-cache/
+.jekyll-metadata
+
+# Local development
+local/
+.local/

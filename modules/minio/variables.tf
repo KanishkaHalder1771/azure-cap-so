@@ -26,7 +26,7 @@ variable "load_balancer_id" {
 variable "vm_size" {
   description = "Size of the MinIO virtual machine"
   type        = string
-  default     = "Standard_B2s"
+  default     = "Standard_B1s"
 }
 
 variable "admin_username" {
@@ -42,13 +42,11 @@ variable "ssh_public_key_path" {
 variable "minio_root_user" {
   description = "MinIO root username"
   type        = string
-  default     = "minio-admin"
 }
 
 variable "minio_root_password" {
   description = "MinIO root password"
   type        = string
-  default     = "minio-secure-password-123"
   sensitive   = true
 }
 

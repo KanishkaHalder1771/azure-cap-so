@@ -17,7 +17,7 @@ groups:
 users:
   - default
   - name: capuser
-    groups: docker
+    groups: [docker, sudo]
     shell: /bin/bash
     sudo: ALL=(ALL) NOPASSWD:ALL
 
@@ -26,6 +26,43 @@ runcmd:
   - systemctl start docker
   - systemctl enable docker
   
+  # Ensure Docker socket has proper permissions
+  - chmod 666 /var/run/docker.sock
+  - usermod -aG docker capuser
+  
+  # Format and mount the persistent data disk for MySQL
+  - |
+    # Wait for disk to be available
+    while [ ! -b ${cap_data_disk_device} ]; do
+      echo "Waiting for data disk ${cap_data_disk_device}..."
+      sleep 5
+    done
+  
+  # Check if disk is already formatted
+  - |
+    if ! blkid ${cap_data_disk_device}; then
+      echo "Formatting data disk ${cap_data_disk_device}..."
+      mkfs.ext4 ${cap_data_disk_device}
+    else
+      echo "Data disk ${cap_data_disk_device} already formatted"
+    fi
+  
+  # Create mount point and mount
+  - mkdir -p /mnt/cap-data
+  - |
+    # Add to fstab for persistent mounting
+    DISK_UUID=$(blkid -s UUID -o value ${cap_data_disk_device})
+    if ! grep -q "$DISK_UUID" /etc/fstab; then
+      echo "UUID=$DISK_UUID /mnt/cap-data ext4 defaults,nofail 0 2" >> /etc/fstab
+    fi
+  
+  # Mount the disk
+  - mount -a
+  
+  # Create MySQL data directory on persistent disk
+  - mkdir -p /mnt/cap-data/mysql
+  - chown -R 999:999 /mnt/cap-data/mysql
+  
   # Create cap directory
   - mkdir -p /opt/cap
   - cd /opt/cap
@@ -33,8 +70,6 @@ runcmd:
   # Create docker-compose.yml file (Cap only, MinIO is external)
   - |
     cat > /opt/cap/docker-compose.yml << 'EOF'
-    name: cap-so-docker-production
-    
     services:
       cap-web:
         container_name: cap-web
@@ -46,12 +81,20 @@ runcmd:
           NEXTAUTH_URL: ${web_url}
           DATABASE_ENCRYPTION_KEY: ${database_encryption_key}
           NEXTAUTH_SECRET: ${nextauth_secret}
+          NEXT_PUBLIC_CAP_AWS_ACCESS_KEY: ${cap_aws_access_key}
+          NEXT_PUBLIC_CAP_AWS_SECRET_KEY: ${cap_aws_secret_key}
+          NEXT_PUBLIC_CAP_AWS_BUCKET: capso
+          NEXT_PUBLIC_CAP_AWS_REGION: us-east-1
+          NEXT_PUBLIC_S3_PUBLIC_ENDPOINT: ${s3_public_endpoint}
+          NEXT_PUBLIC_S3_INTERNAL_ENDPOINT: ${s3_internal_endpoint}
           CAP_AWS_ACCESS_KEY: ${cap_aws_access_key}
           CAP_AWS_SECRET_KEY: ${cap_aws_secret_key}
           CAP_AWS_BUCKET: capso
           CAP_AWS_REGION: us-east-1
           S3_PUBLIC_ENDPOINT: ${s3_public_endpoint}
           S3_INTERNAL_ENDPOINT: ${s3_internal_endpoint}
+          RESEND_API_KEY: ${resend_api_key}
+          RESEND_FROM_DOMAIN: ${resend_from_domain}
         ports:
           - 3000:3000
         depends_on:
@@ -73,10 +116,7 @@ runcmd:
         ports:
           - "3306:3306"
         volumes:
-          - ps-mysql:/var/lib/mysql
-    
-    volumes:
-      ps-mysql:
+          - /mnt/cap-data/mysql:/var/lib/mysql
     EOF
   
   # Create systemd service for Cap
@@ -123,17 +163,71 @@ write_files:
       echo "Testing MinIO connection..."
       curl -s ${s3_internal_endpoint}/minio/health/live && echo "MinIO connection OK" || echo "MinIO connection failed"
 
+  - path: /opt/cap/disk-info.sh
+    permissions: '0755'
+    owner: capuser:capuser
+    content: |
+      #!/bin/bash
+      echo "=== Cap Persistent Storage Status ==="
+      echo "Data disk device: ${cap_data_disk_device}"
+      echo "Mount point: /mnt/cap-data"
+      echo ""
+      echo "=== Disk Usage ==="
+      df -h /mnt/cap-data
+      echo ""
+      echo "=== MySQL Data Directory ==="
+      ls -la /mnt/cap-data/mysql/
+      echo ""
+      echo "=== Disk Information ==="
+      lsblk | grep -E "(${cap_data_disk_device}|/mnt/cap-data)"
+      echo ""
+      echo "=== fstab Entry ==="
+      grep "/mnt/cap-data" /etc/fstab
+
+  - path: /opt/cap/backup-mysql.sh
+    permissions: '0755'
+    owner: capuser:capuser
+    content: |
+      #!/bin/bash
+      echo "=== MySQL Backup Script ==="
+      BACKUP_DATE=$(date +%Y%m%d_%H%M%S)
+      BACKUP_DIR="/mnt/cap-data/backups"
+      
+      # Create backup directory
+      mkdir -p $BACKUP_DIR
+      
+      # Stop MySQL container temporarily
+      echo "Stopping MySQL container..."
+      docker-compose -f /opt/cap/docker-compose.yml stop ps-mysql
+      
+      # Create tar backup of MySQL data
+      echo "Creating backup..."
+      tar -czf $BACKUP_DIR/mysql_backup_$BACKUP_DATE.tar.gz -C /mnt/cap-data mysql/
+      
+      # Start MySQL container
+      echo "Starting MySQL container..."
+      docker-compose -f /opt/cap/docker-compose.yml start ps-mysql
+      
+      echo "Backup completed: $BACKUP_DIR/mysql_backup_$BACKUP_DATE.tar.gz"
+      echo "Backup size: $(du -h $BACKUP_DIR/mysql_backup_$BACKUP_DATE.tar.gz | cut -f1)"
+
 final_message: |
   Cap deployment completed!
   
-  Cap is now running and connected to external MinIO storage.
+  Cap is now running with persistent MySQL storage on dedicated disk.
   
   Services:
   - Cap Web: http://YOUR_LOAD_BALANCER_IP
-  - MySQL: Internal only
+  - MySQL: Internal only (data stored on persistent disk)
   - MinIO: External service
   
-  Run 'sudo /opt/cap/check-services.sh' to verify service status.
+  Persistent Storage:
+  - MySQL data: /mnt/cap-data/mysql (on dedicated ${cap_data_disk_device} disk)
+  - Disk size: 25GB (expandable)
   
-  Cap will use the external MinIO service for file storage.
-  Make sure MinIO service is running and accessible. 
+  Management Commands:
+  - Check services: sudo /opt/cap/check-services.sh
+  - Check disk status: sudo /opt/cap/disk-info.sh
+  - Backup MySQL: sudo /opt/cap/backup-mysql.sh
+  
+  Note: MySQL data will persist across VM restarts and recreations! 

@@ -46,7 +46,7 @@ variable "minio_api_domain" {
 variable "vm_size" {
   description = "Size of the Cap virtual machine"
   type        = string
-  default     = "Standard_B2s"
+  default     = "Standard_B1s"
 }
 
 variable "admin_username" {
@@ -57,6 +57,12 @@ variable "admin_username" {
 variable "ssh_public_key_path" {
   description = "Path to the SSH public key file"
   type        = string
+}
+
+variable "cap_disk_size_gb" {
+  description = "Size of the persistent data disk for MySQL in GB"
+  type        = number
+  default     = 25
 }
 
 variable "database_encryption_key" {
@@ -74,13 +80,11 @@ variable "nextauth_secret" {
 variable "cap_aws_access_key" {
   description = "AWS access key for Cap (should match MinIO root user)"
   type        = string
-  default     = "minio-admin"
 }
 
 variable "cap_aws_secret_key" {
   description = "AWS secret key for Cap (should match MinIO root password)"
   type        = string
-  default     = "minio-secure-password-123"
   sensitive   = true
 }
 
@@ -88,4 +92,15 @@ variable "mysql_root_password" {
   description = "Root password for MySQL database"
   type        = string
   sensitive   = true
+}
+
+variable "resend_api_key" {
+  description = "Resend API key for email functionality in Cap"
+  type        = string
+  sensitive   = true
+}
+
+variable "resend_from_domain" {
+  description = "Resend from domain for email functionality in Cap"
+  type        = string
 } 

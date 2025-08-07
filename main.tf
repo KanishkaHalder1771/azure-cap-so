@@ -25,6 +25,10 @@ module "network" {
   location               = azurerm_resource_group.main.location
   vnet_address_space     = var.vnet_address_space
   subnet_address_prefixes = var.subnet_address_prefixes
+
+  depends_on = [
+    azurerm_resource_group.main
+  ]
 }
 
 # Application Gateway Module
@@ -41,6 +45,16 @@ module "load_balancer" {
   cap_domain           = var.cap_domain
   minio_api_domain     = var.minio_api_domain
   minio_console_domain = var.minio_console_domain
+  
+  # SSL Configuration
+  ssl_enabled              = var.ssl_enabled
+  key_vault_name          = var.key_vault_name
+  key_vault_resource_group = var.key_vault_resource_group != "" ? var.key_vault_resource_group : azurerm_resource_group.main.name
+  ssl_certificate_name    = var.ssl_certificate_name
+
+  depends_on = [
+    azurerm_resource_group.main
+  ]
 }
 
 # MinIO Storage Module
@@ -66,6 +80,12 @@ module "minio" {
   minio_root_user        = var.minio_root_user
   minio_root_password    = var.minio_root_password
   minio_disk_size_gb     = var.minio_disk_size_gb
+
+  depends_on = [
+    azurerm_resource_group.main,
+    module.network,
+    module.load_balancer
+  ]
 }
 
 # Cap Service Module
@@ -88,6 +108,7 @@ module "capso" {
   vm_size             = var.vm_size
   admin_username      = var.admin_username
   ssh_public_key_path = var.ssh_public_key_path
+  cap_disk_size_gb    = var.cap_disk_size_gb
   
   # Application Configuration
   database_encryption_key = var.database_encryption_key
@@ -95,4 +116,13 @@ module "capso" {
   cap_aws_access_key     = var.cap_aws_access_key
   cap_aws_secret_key     = var.cap_aws_secret_key
   mysql_root_password    = var.mysql_root_password
+  resend_api_key         = var.resend_api_key
+  resend_from_domain     = var.resend_from_domain
+
+  depends_on = [
+    azurerm_resource_group.main,
+    module.network,
+    module.load_balancer,
+    module.minio
+  ]
 } 

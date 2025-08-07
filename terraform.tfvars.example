@@ -5,9 +5,9 @@ resource_group_name = "selfhost-production-rg"
 location           = "East US"  # Change to your preferred Azure region
 
 # Domain Configuration - UPDATE THESE TO YOUR DOMAINS
-cap_domain           = "capso.2vid.ai"
-minio_api_domain     = "api.minio.2vid.ai"
-minio_console_domain = "console.minio.2vid.ai"
+cap_domain           = "capso.example.com"
+minio_api_domain     = "api.minio.example.com"
+minio_console_domain = "console.minio.example.com"
 
 # Network Configuration
 vnet_address_space               = ["10.0.0.0/16"]
@@ -15,19 +15,18 @@ subnet_address_prefixes          = ["10.0.1.0/24"]     # Main subnet for VMs
 appgw_subnet_address_prefixes    = ["10.0.2.0/24"]     # Application Gateway subnet
 
 # VM Configuration
-vm_size         = "Standard_D2s_v3"      # Cap VM size
-minio_vm_size   = "Standard_D2s_v3"      # MinIO VM size (consider larger for storage workloads)
-admin_username  = "selfhostuser"
-
-# SSH Configuration
-# Make sure you have an SSH key pair generated
-# ssh-keygen -t rsa -b 4096 -C "your_email@example.com"
+vm_size             = "Standard_B1s"        # 1 vCPU, 1GB RAM - Cost optimized
+minio_vm_size       = "Standard_B1s"        # 1 vCPU, 1GB RAM - Cost optimized
+admin_username      = "selfhostuser"
 ssh_public_key_path = "~/.ssh/id_rsa.pub"
+
+# Storage Configuration
+minio_disk_size_gb = 50                     # MinIO object storage
+cap_disk_size_gb = 25                       # MySQL database storage
 
 # MinIO Storage Configuration
 minio_root_user        = "minio-admin-2024"
 minio_root_password    = "MinIO-Secure-Password-2024!"
-minio_disk_size_gb     = 100  # Size of persistent data disk in GB (adjust based on needs)
 
 # Cap Application Configuration - CHANGE THESE VALUES FOR PRODUCTION!
 # Generate secure random values for production deployment
@@ -60,9 +59,9 @@ mysql_root_password    = "CapMySQL-Secure-Password-2024!"
 
 # Architecture Notes:
 # This configuration uses Azure Application Gateway (Layer 7) for intelligent routing:
-# - capso.2vid.ai → Cap VM:3000
-# - api.minio.2vid.ai → MinIO VM:9000 (S3 API)
-# - console.minio.2vid.ai → MinIO VM:9001 (Web Console)
+# - capso.example.com → Cap VM:3000
+# - api.minio.example.com → MinIO VM:9000 (S3 API)
+# - console.minio.example.com → MinIO VM:9001 (Web Console)
 #
 # Benefits:
 # - Domain-based routing (no port numbers in URLs)
@@ -75,7 +74,27 @@ mysql_root_password    = "CapMySQL-Secure-Password-2024!"
 # After deployment, you'll need to configure DNS records:
 # 1. Get the Application Gateway IP from Terraform outputs
 # 2. Create A records in your DNS provider:
-#    - capso.2vid.ai → APPLICATION_GATEWAY_IP
-#    - api.minio.2vid.ai → APPLICATION_GATEWAY_IP  
-#    - console.minio.2vid.ai → APPLICATION_GATEWAY_IP
-# 3. Configure SSL certificates (Azure-managed certs or Let's Encrypt) 
+#    - capso.example.com → APPLICATION_GATEWAY_IP
+#    - api.minio.example.com → APPLICATION_GATEWAY_IP  
+#    - console.minio.example.com → APPLICATION_GATEWAY_IP
+# 3. Configure SSL certificates (Azure-managed certs or Let's Encrypt)
+
+# SSL Configuration (Optional - Enable HTTPS with Key Vault certificates)
+# Set ssl_enabled = 1 to enable SSL, 0 to disable
+ssl_enabled              = 0                           # 0 = HTTP only, 1 = HTTP + HTTPS
+key_vault_name          = "kv-letsencrypt-example"     # Your Key Vault name
+key_vault_resource_group = ""                          # Leave empty if in same RG as main deployment
+ssl_certificate_name    = "wildcard-example-com"       # Your certificate name in Key Vault
+
+# SSL Setup Instructions:
+# 1. Ensure your Key Vault exists with SSL certificates
+# 2. Set ssl_enabled = 1 above
+# 3. Update key_vault_name and ssl_certificate_name with your actual values
+# 4. Deploy with: terraform apply
+# 5. Both HTTP and HTTPS will be available:
+#    - http://capso.example.com (HTTP)
+#    - https://capso.example.com (HTTPS - requires ssl_enabled = 1)
+
+# Cap Application Configuration
+resend_api_key = "re_dqFf7Jvq_KC7Btz7MCLkCzQEvDx6EM17e"  # Your Resend API key for email functionality
+resend_from_domain = "example.com"  # Your verified domain in Resend for sending emails 

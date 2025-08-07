@@ -3,7 +3,8 @@ resource "azurerm_public_ip" "minio_vm" {
   name                = "minio-vm-public-ip"
   location            = var.location
   resource_group_name = var.resource_group_name
-  allocation_method   = "Dynamic"
+  allocation_method   = "Static"
+  sku                 = "Standard"
 }
 
 # Managed Disk for MinIO Data (Persistent Storage)

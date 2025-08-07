@@ -17,7 +17,7 @@ groups:
 users:
   - default
   - name: miniouser
-    groups: docker
+    groups: [docker, sudo]
     shell: /bin/bash
     sudo: ALL=(ALL) NOPASSWD:ALL
 
@@ -25,6 +25,10 @@ runcmd:
   # Start and enable Docker
   - systemctl start docker
   - systemctl enable docker
+  
+  # Ensure Docker socket has proper permissions
+  - chmod 666 /var/run/docker.sock
+  - usermod -aG docker miniouser
   
   # Format and mount the persistent data disk
   - |
@@ -54,8 +58,18 @@ runcmd:
   - mount -a
   
   # Set permissions for MinIO data directory
-  - chown -R 1000:1000 /mnt/minio-data
-  - chmod 755 /mnt/minio-data
+  # The bitnami/minio image runs as UID 1001, GID 0 (root)
+  - chown -R 1001:0 /mnt/minio-data
+  - chmod -R 755 /mnt/minio-data
+  - |
+    # Ensure proper ownership for MinIO container
+    # The bitnami/minio image runs as user 1001, group 0 (root)
+    chown -R 1001:0 /mnt/minio-data
+    chmod -R 755 /mnt/minio-data
+    # Create MinIO system directories with proper permissions
+    mkdir -p /mnt/minio-data/.minio.sys
+    chown -R 1001:0 /mnt/minio-data/.minio.sys
+    chmod -R 755 /mnt/minio-data/.minio.sys
   
   # Create MinIO directory structure
   - mkdir -p /opt/minio
@@ -121,10 +135,32 @@ runcmd:
   - systemctl enable minio.service
   - systemctl start minio.service
   
+  # Wait a moment for the service to start, then verify permissions
+  - sleep 10
+  - |
+    # Double-check permissions after service start
+    if [ -d "/mnt/minio-data" ]; then
+      echo "Verifying MinIO data directory permissions..."
+      chown -R 1001:0 /mnt/minio-data
+      chmod -R 755 /mnt/minio-data
+      echo "Permissions verified for /mnt/minio-data"
+    fi
+  
   # Wait for MinIO to start and create additional buckets if needed
   - sleep 30
   - |
-    docker exec minio-server mc alias set local http://localhost:9000 ${minio_root_user} ${minio_root_password}
+    # Check if MinIO is running properly before proceeding
+    if docker ps | grep -q minio-server; then
+      echo "MinIO container is running, setting up buckets..."
+      docker exec minio-server mc alias set local http://localhost:9000 ${minio_root_user} ${minio_root_password}
+    else
+      echo "MinIO container is not running, checking logs..."
+      docker logs minio-server || echo "No logs available"
+      echo "Attempting to restart MinIO service..."
+      systemctl restart minio.service
+      sleep 20
+      docker exec minio-server mc alias set local http://localhost:9000 ${minio_root_user} ${minio_root_password}
+    fi
   - |
     # Create additional buckets for different services
     docker exec minio-server mc mb local/capso --ignore-existing

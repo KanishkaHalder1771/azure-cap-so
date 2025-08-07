@@ -38,4 +38,29 @@ variable "minio_api_domain" {
 variable "minio_console_domain" {
   description = "Domain for MinIO Console"
   type        = string
+}
+
+# SSL Configuration
+variable "ssl_enabled" {
+  description = "Enable SSL certificate from Key Vault"
+  type        = number
+  default     = 0
+}
+
+variable "key_vault_name" {
+  description = "Name of the Azure Key Vault containing SSL certificates"
+  type        = string
+  default     = ""
+}
+
+variable "key_vault_resource_group" {
+  description = "Resource group of the Key Vault"
+  type        = string
+  default     = ""
+}
+
+variable "ssl_certificate_name" {
+  description = "Name of the SSL certificate in Key Vault"
+  type        = string
+  default     = ""
 } 
