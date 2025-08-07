@@ -15,7 +15,7 @@ subnet_address_prefixes          = ["10.0.1.0/24"]     # Main subnet for VMs
 appgw_subnet_address_prefixes    = ["10.0.2.0/24"]     # Application Gateway subnet
 
 # VM Configuration
-vm_size             = "Standard_B1s"        # 1 vCPU, 1GB RAM - Cost optimized
+vm_size             = "Standard_B2s"        # 2 vCPU, 4 GB RAM 
 minio_vm_size       = "Standard_B1s"        # 1 vCPU, 1GB RAM - Cost optimized
 admin_username      = "selfhostuser"
 ssh_public_key_path = "~/.ssh/id_rsa.pub"
@@ -96,5 +96,5 @@ ssl_certificate_name    = "wildcard-example-com"       # Your certificate name i
 #    - https://capso.example.com (HTTPS - requires ssl_enabled = 1)
 
 # Cap Application Configuration
-resend_api_key = "re_dqFf7Jvq_KC7Btz7MCLkCzQEvDx6EM17e"  # Your Resend API key for email functionality
+resend_api_key = "re_1234"  # Your Resend API key for email functionality
 resend_from_domain = "example.com"  # Your verified domain in Resend for sending emails 
